@@ -85,26 +85,27 @@ app.post('/api/users', async (req, res) => {
 });
 
 app.post('/api/users/:id/exercises', async (req, res) => {
-    const id = req.params.id;
-    const { description, duration, date } = req.body;
+  const id = req.params.id;
+  const { description, duration, date } = req.body;
 
-    const newExercise = {
-        description: description,
-        duration: parseInt(duration),
-        date: date ? new Date(date) : new Date()
-    };
+  const newExercise = {
+      description: description,
+      duration: parseInt(duration),
+      date: date ? new Date(date) : new Date()
+  };
 
-    try {
-        const data = await User.findOneAndUpdate(
-            { _id: new ObjectId(id) },
-            { $push: { exercises: newExercise } },
-            { new: true }
-        );
-        res.json(data);
-    } catch (err) {
-        res.send(ERROR);
-    }
+  try {
+      const updatedUser = await User.findOneAndUpdate(
+          { _id: new ObjectId(id) },
+          { $push: { exercises: newExercise } },
+          { new: true }
+      );
+      res.json(updatedUser); // Return the entire user object with exercises added
+  } catch (err) {
+      res.send(ERROR);
+  }
 });
+
 
 const listener = app.listen(process.env.PORT || 3000, () => {
     console.log('Your app is listening on port ' + listener.address().port);
