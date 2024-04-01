@@ -47,28 +47,27 @@ app.get('/api/users', async (req, res) => {
 
 app.get('/api/users/:id/logs', async (req, res) => {
     const id = req.params.id;
-    const dateFrom = new Date(req.query.from);
-    const dateTo = new Date(req.query.to);
+    const dateFrom = req.query.from ? new Date(req.query.from) : new Date(0);
+    const dateTo = req.query.to ? new Date(req.query.to) : new Date();
     const limit = parseInt(req.query.limit);
 
     try {
         const data = await User.findOne({ _id: new ObjectId(id) });
-        let log = data.exercises.filter(exercise =>
-            new Date(Date.parse(exercise.date)).getTime() > dateFrom &&
-            new Date(Date.parse(exercise.date)).getTime() < dateTo
-        ).map(exercise => ({
-            description: exercise.description,
-            duration: exercise.duration,
-            date: new Date(exercise.date).toDateString()
-        }));
+        const log = data.exercises
+            .filter(exercise => exercise.date >= dateFrom && exercise.date <= dateTo)
+            .map(exercise => ({
+                description: exercise.description,
+                duration: exercise.duration,
+                date: exercise.date.toDateString()
+            }));
 
-        if (limit) log = log.slice(0, limit);
+        const logWithLimit = limit ? log.slice(0, limit) : log;
 
         res.json({
             _id: data._id,
             username: data.username,
             count: log.length,
-            log: log
+            log: logWithLimit
         });
     } catch (err) {
         res.send(ERROR);
@@ -87,12 +86,12 @@ app.post('/api/users', async (req, res) => {
 
 app.post('/api/users/:id/exercises', async (req, res) => {
     const id = req.params.id;
-    let { description, duration, date } = req.body;
+    const { description, duration, date } = req.body;
 
     const newExercise = {
         description: description,
-        duration: duration,
-        date: date ? new Date(date).toDateString() : new Date().toDateString()
+        duration: parseInt(duration),
+        date: date ? new Date(date) : new Date()
     };
 
     try {
@@ -101,14 +100,7 @@ app.post('/api/users/:id/exercises', async (req, res) => {
             { $push: { exercises: newExercise } },
             { new: true }
         );
-        const response = {
-            username: data.username,
-            description: newExercise.description,
-            duration: newExercise.duration,
-            date: new Date(newExercise.date).toDateString(),
-            _id: data._id
-        };
-        res.json(response);
+        res.json(data);
     } catch (err) {
         res.send(ERROR);
     }
