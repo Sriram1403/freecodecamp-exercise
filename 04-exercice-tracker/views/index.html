@@ -1,46 +1,119 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Exercise Tracker | freeCodeCamp</title>
-    <link rel="shortcut icon" href="https://cdn.freecodecamp.org/universal/favicons/favicon.ico"  type="image/x-icon" />
-    <link href="https://fonts.googleapis.com/css?family=Roboto" rel="stylesheet" type="text/css" />
-    <link href="style.css" rel="stylesheet" type="text/css" />
-  </head>
+require('dotenv').config();
 
-  <body>
-    <div class="container">
-      <h1>Exercise tracker</h1>
-      <form action="/api/users" method="post">
-        <h3>Create a New User</h3>
-        <p><code>POST /api/users</code></p>
-        <input id="uname" type="text" name="username" placeholder="username" />
-        <input type="submit" value="Submit" />
-      </form>
-      <form id="exercise-form" method="post">
-        <h3>Add exercises</h3>
-        <p><code>POST /api/users/:_id/exercises</code></p>
-        <input id="uid" type="text" name=":_id" placeholder=":_id" />
-        <input id="desc" type="text" name="description" placeholder="description*" />
-        <input id="dur" type="text" name="duration" placeholder="duration* (mins.)" />
-        <input id="date" type="text" name="date" placeholder="date (yyyy-mm-dd)" />
-        <input type="submit" value="Submit" />
-      </form>
-      <p>
-        <strong>GET user's exercise log: </strong>
-        <code>GET /api/users/:_id/logs?[from][&amp;to][&amp;limit]</code>
-      </p>
-      <p><strong>[ ]</strong> = optional</p>
-      <p><strong>from, to</strong> = dates (yyyy-mm-dd); <strong>limit</strong> = number</p>
-    </div>
-    <script>
-      const exerciseForm = document.getElementById("exercise-form");
+console.log(process.env.DB_URI);
 
-      exerciseForm.addEventListener("submit", () => {
-        const userId = document.getElementById("uid").value;
-        exerciseForm.action = `/api/users/${userId}/exercises`;
+const express = require('express');
+const cors = require('cors');
+const app = express();
+const mongoose = require('mongoose');
+const ObjectId = require('mongoose').Types.ObjectId;
+const { Schema } = mongoose;
+const bodyParser = require('body-parser');
 
-        exerciseForm.submit();
-      });
-    </script>
-  </body>
-</html>
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.static('public'));
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/views/index.html');
+});
+
+main().catch(err => console.log(err));
+
+async function main() {
+    await mongoose.connect(process.env.DB_URI);
+}
+
+const userSchema = new Schema({
+    username: { type: String, require: true, unique: true },
+    exercises: [{
+        description: String,
+        duration: Number,
+        date: Date
+    }]
+}, { versionKey: false });
+
+const User = mongoose.model('User', userSchema);
+const ERROR = { error: "There was an error while getting the users." };
+
+app.get('/api/users', async (req, res) => {
+    try {
+        const data = await User.find({});
+        res.json(data);
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
+
+app.get('/api/users/:id/logs', async (req, res) => {
+    const id = req.params.id;
+    const dateFrom = new Date(req.query.from);
+    const dateTo = new Date(req.query.to);
+    const limit = parseInt(req.query.limit);
+
+    try {
+        const data = await User.findOne({ _id: new ObjectId(id) });
+        let log = data.exercises.filter(exercise =>
+            new Date(Date.parse(exercise.date)).getTime() > dateFrom &&
+            new Date(Date.parse(exercise.date)).getTime() < dateTo
+        ).map(exercise => ({
+            description: exercise.description,
+            duration: exercise.duration,
+            date: new Date(exercise.date).toDateString()
+        }));
+
+        if (limit) log = log.slice(0, limit);
+
+        res.json({
+            _id: data._id,
+            username: data.username,
+            count: log.length,
+            log: log
+        });
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
+
+app.post('/api/users', async (req, res) => {
+    const { username } = req.body;
+    try {
+        const data = await User.create({ username: username });
+        res.json({ _id: data._id, username: data.username });
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
+
+app.post('/api/users/:id/exercises', async (req, res) => {
+    const id = req.params.id;
+    let { description, duration, date } = req.body;
+
+    const newExercise = {
+        description: description,
+        duration: duration,
+        date: date ? new Date(date).toDateString() : new Date().toDateString()
+    };
+
+    try {
+        const data = await User.findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            { $push: { exercises: newExercise } },
+            { new: true }
+        );
+        const response = {
+            username: data.username,
+            description: newExercise.description,
+            duration: newExercise.duration,
+            date: new Date(newExercise.date).toDateString(),
+            _id: data._id
+        };
+        res.json(response);
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
+
+const listener = app.listen(process.env.PORT || 3000, () => {
+    console.log('Your app is listening on port ' + listener.address().port);
+});
