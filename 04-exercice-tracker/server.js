@@ -1,24 +1,27 @@
-const express = require('express')
-const app = express()
-const cors = require('cors')
+require('dotenv').config();
+
+console.log(process.env.DB_URI);
+
+const express = require('express');
+const cors = require('cors');
+const app = express();
 const mongoose = require('mongoose');
 const ObjectId = require('mongoose').Types.ObjectId;
-const { Schema } = mongoose
+const { Schema } = mongoose;
 const bodyParser = require('body-parser');
-require('dotenv').config()
 
-app.use(bodyParser.urlencoded({ extended: false }))
-app.use(bodyParser.json())
-app.use(cors())
-app.use(express.static('public'))
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.static('public'));
 app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/views/index.html')
+    res.sendFile(__dirname + '/views/index.html');
 });
 
-main().catch(err => console.log(err))
+main().catch(err => console.log(err));
 
 async function main() {
-    await mongoose.connect(process.env.DB_URI)
+    await mongoose.connect(process.env.DB_URI);
 }
 
 const userSchema = new Schema({
@@ -28,63 +31,61 @@ const userSchema = new Schema({
         duration: Number,
         date: Date
     }]
-}, { versionKey: false })
+}, { versionKey: false });
 
-const User = mongoose.model('User', userSchema)
+const User = mongoose.model('User', userSchema);
 const ERROR = { error: "There was an error while getting the users." };
 
-app.get('/api/users', (req, res) => {
-    User.find({}, (err, data) => {
-        if (err) return res.send(ERROR)
-        res.json(data)
-    })
-})
+app.get('/api/users', async (req, res) => {
+    try {
+        const data = await User.find({});
+        res.json(data);
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
 
-app.get('/api/users/:id/logs', (req, res) => {
+app.get('/api/users/:id/logs', async (req, res) => {
     const id = req.params.id;
     const dateFrom = new Date(req.query.from);
     const dateTo = new Date(req.query.to);
     const limit = parseInt(req.query.limit);
 
-    User.findOne({ _id: new ObjectId(id) }, (err, data) => {
-        if (err) return res.send(ERROR)
+    try {
+        const data = await User.findOne({ _id: new ObjectId(id) });
+        let log = data.exercises.filter(exercise =>
+            new Date(Date.parse(exercise.date)).getTime() > dateFrom &&
+            new Date(Date.parse(exercise.date)).getTime() < dateTo
+        ).map(exercise => ({
+            description: exercise.description,
+            duration: exercise.duration,
+            date: new Date(exercise.date).toDateString()
+        }));
 
-        let log = [];
-
-        data.exercises.filter(exercise =>
-            new Date(Date.parse(exercise.date)).getTime() > dateFrom
-            && new Date(Date.parse(exercise.date)).getTime() < dateTo
-        )
-
-        for (const exercise of data.exercises) {
-            log.push({
-                description: exercise.description,
-                duration: exercise.duration,
-                date: new Date(exercise.date).toDateString()
-            })
-        }
-
-        if (limit) log = log.slice(0, limit)
+        if (limit) log = log.slice(0, limit);
 
         res.json({
             _id: data._id,
             username: data.username,
             count: log.length,
             log: log
-        })
-    })
-})
+        });
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
 
-app.post('/api/users', (req, res) => {
-    const username = req.body.username;
-    User.create({ username: username }, (err, data) => {
-            if (err) return res.send(ERROR)
-            res.json({ _id: data._id, username: data.username })
-        }
-    )
-})
+app.post('/api/users', async (req, res) => {
+    const { username } = req.body;
+    try {
+        const data = await User.create({ username: username });
+        res.json({ _id: data._id, username: data.username });
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
 
-app.post('/api/users/:id/exercises', (req, res) => {
+app.post('/api/users/:id/exercises', async (req, res) => {
     const id = req.params.id;
     let { description, duration, date } = req.body;
 
@@ -94,24 +95,25 @@ app.post('/api/users/:id/exercises', (req, res) => {
         date: date ? new Date(date).toDateString() : new Date().toDateString()
     };
 
-    User.findOne({ _id: new ObjectId(id) }, (err, data) => {
-            if (err) return res.send(ERROR)
-            data.exercises.push(newExercise);
-            data.save((err, data) => {
-                const response = {
-                    username: data.username,
-                    description: data.exercises[data.exercises.length - 1].description,
-                    duration: data.exercises[data.exercises.length - 1].duration,
-                    date: new Date(data.exercises[data.exercises.length - 1].date).toDateString(),
-                    _id: data._id
-                };
-
-                res.json(response)
-            })
-        }
-    )
-})
+    try {
+        const data = await User.findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            { $push: { exercises: newExercise } },
+            { new: true }
+        );
+        const response = {
+            username: data.username,
+            description: newExercise.description,
+            duration: newExercise.duration,
+            date: new Date(newExercise.date).toDateString(),
+            _id: data._id
+        };
+        res.json(response);
+    } catch (err) {
+        res.send(ERROR);
+    }
+});
 
 const listener = app.listen(process.env.PORT || 3000, () => {
-    console.log('Your app is listening on port ' + listener.address().port)
-})
+    console.log('Your app is listening on port ' + listener.address().port);
+});
