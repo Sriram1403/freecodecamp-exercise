@@ -95,18 +95,24 @@ app.post('/api/users/:id/exercises', async (req, res) => {
   };
 
   try {
-      const updatedUser = await User.findOneAndUpdate(
-          { _id: new ObjectId(id) },
-          { $push: { exercises: newExercise } },
-          { new: true }
-      );
-      res.json(updatedUser); // Return the entire user object with exercises added
+      const user = await User.findOne({ _id: new ObjectId(id) });
+      if (!user) {
+          return res.status(404).json({ error: "User not found" });
+      }
+
+      user.exercises.push(newExercise);
+      await user.save();
+
+      res.json(user); // Return the entire user object with exercises added
   } catch (err) {
-      res.send(ERROR);
+      res.status(500).json({ error: "Server error" });
   }
 });
+
+
 
 
 const listener = app.listen(process.env.PORT || 3000, () => {
     console.log('Your app is listening on port ' + listener.address().port);
 });
+
